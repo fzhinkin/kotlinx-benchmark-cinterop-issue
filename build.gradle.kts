@@ -1,5 +1,7 @@
 import kotlinx.benchmark.gradle.JvmBenchmarkTarget
-import org.jetbrains.kotlin.gradle.targets.js.dsl.ExperimentalWasmDsl
+import kotlinx.benchmark.gradle.NativeBenchmarkTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension
 import org.jetbrains.kotlin.gradle.targets.js.npm.tasks.KotlinNpmInstallTask
 
@@ -15,18 +17,27 @@ repositories {
     mavenCentral()
 }
 
+fun KotlinNativeCompilation.configureCInterop() {
+    cinterops {
+        val nativeCalls by creating {
+            defFile(project.rootDir.resolve("src/appleMain/kotlin/nativeCalls.def"))
+            packageName("org.example.native")
+        }
+    }
+}
+
 kotlin {
     jvmToolchain(21)
 
-    jvm()
-
-    macosArm64()
-    macosX64()
-    linuxX64()
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs { nodejs() }
-    js(IR) { nodejs() }
+    macosArm64 {
+        // Neither of these works:
+        // compilations.named("main") {configureCInterop() }
+        // compilations.named("macosArm64Benchmark") {configureCInterop() }
+    }
+    macosX64 {
+        // compilations.named("main") {configureCInterop() }
+        // compilations.named("macosX64Benchmark") { configureCInterop() }
+    }
 
     sourceSets {
         commonMain {
@@ -39,29 +50,13 @@ kotlin {
 
 benchmark {
     targets {
-        register("jvm") {
-            this as JvmBenchmarkTarget
-            jmhVersion = "1.37"
+        register("macosArm64") {
+            this as NativeBenchmarkTarget
+            compilation.configureCInterop()
         }
-        register("macosArm64")
-        register("macosX64")
-        register("linuxX64")
-        register("js")
-        register("wasmJs")
-    }
-
-    configurations {
-        named("main") {
-            advanced("jvmForks", 3)
+        register("macosX64") {
+            this as NativeBenchmarkTarget
+            compilation.configureCInterop()
         }
     }
-}
-
-rootProject.the<NodeJsRootExtension>().apply {
-    nodeVersion = "21.0.0-v8-canary202310177990572111"
-    nodeDownloadBaseUrl = "https://nodejs.org/download/v8-canary"
-}
-
-rootProject.tasks.withType<KotlinNpmInstallTask>().configureEach {
-    args.add("--ignore-engines")
 }
